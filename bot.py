@@ -219,13 +219,9 @@ def play_game(game_id, variant_key='standard'):
 def listen_to_events():
     """Listens to global challenges and game starts."""
     print(f"Starting global event listener for user: {BOT_USERNAME}")
-    url = "https://lichess.org"
+    url = "https://lichess.org/api/stream/event"
     
     response = requests.get(url, headers=HEADERS, stream=True)
-    
-    # ⚡ CRITICAL LINE TO ADD HERE:
-    # This forces the script to throw an HTTPError if Lichess rejects the connection!
-    response.raise_for_status() 
     
     for line in response.iter_lines():
         if not line:
@@ -240,6 +236,7 @@ def listen_to_events():
             challenge_id = event['challenge']['id']
             variant = event['challenge']['variant']['key']
             
+            # 2. Check if the incoming variant is supported in our VARIANT_MAP
             if variant not in VARIANT_MAP:
                 print(f"[CHALLENGE] Declining unsupported variant '{variant}' for ID: {challenge_id}")
                 requests.post(f"https://lichess.org/api/challenge/{challenge_id}/decline", headers=HEADERS)
@@ -251,12 +248,12 @@ def listen_to_events():
 
         elif event.get('type') == 'gameStart':
             game_id = event['game']['id']
+            # Pass the variant key straight into the game thread handler
             game_variant = event['game'].get('variant', {}).get('key', 'standard')
             
             game_thread = threading.Thread(target=play_game, args=(game_id, game_variant))
             game_thread.daemon = True
             game_thread.start()
-
 
 import traceback
 
@@ -269,6 +266,5 @@ if __name__ == "__main__":
             print("--- FULL ERROR TRACEBACK START ---")
             traceback.print_exc()
             print("--- FULL ERROR TRACEBACK END ---\n")
-            print("Reconnecting in 10 seconds...")
-            time.sleep(10)
+            print("Reconnecting in 10 seconds...")time.sleep(10)
           

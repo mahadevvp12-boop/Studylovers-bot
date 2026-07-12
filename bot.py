@@ -266,5 +266,6 @@ if __name__ == "__main__":
             print("--- FULL ERROR TRACEBACK START ---")
             traceback.print_exc()
             print("--- FULL ERROR TRACEBACK END ---\n")
-            print("Reconnecting in 10 seconds...")time.sleep(10)
+            print("Reconnecting in 10 seconds...")
+            time.sleep(10)
           

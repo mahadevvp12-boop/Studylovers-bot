@@ -211,10 +211,17 @@ def listen_to_events():
             game_thread.daemon = True
             game_thread.start()
 
+import traceback
+
 if __name__ == "__main__":
     while True:
         try:
             listen_to_events()
         except Exception as global_err:
-            print(f"Network stream disconnected: {global_err}. Reconnecting in 10 seconds...")
+            print(f"\n CRASH DETECTED: {global_err}")
+            print("--- FULL ERROR TRACEBACK START ---")
+            traceback.print_exc()
+            print("--- FULL ERROR TRACEBACK END ---\n")
+            print("Reconnecting in 10 seconds...")
             time.sleep(10)
+

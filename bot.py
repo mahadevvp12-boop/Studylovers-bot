@@ -49,12 +49,64 @@ def make_lichess_move(game_id, move_str):
     except Exception as e:
         print(f"[{game_id}] Error posting move: {e}")
 
+# --- PIECE VALUES FOR EVALUATING VARIANT POSITIONS ---
+PIECE_VALUES = {
+    chess.PAWN: 100,
+    chess.KNIGHT: 320,
+    chess.BISHOP: 330,
+    chess.ROOK: 500,
+    chess.QUEEN: 900,
+    chess.KING: 20000
+}
+
+def evaluate_board(board):
+    """Evaluates the material balance of the board dynamically."""
+    if board.is_checkmate():
+        return -99999 if board.turn else 99999
+        
+    score = 0
+    for square in chess.SQUARES:
+        piece = board.piece_at(square)
+        if piece:
+            val = PIECE_VALUES.get(piece.piece_type, 0)
+            if piece.color == chess.WHITE:
+                score += val
+            else:
+                score -= val
+    return score
+
+def minimax(board, depth, alpha, beta, maximizing_player):
+    """Looks ahead 'depth' number of moves to find the safest, strongest line."""
+    if depth == 0 or board.is_game_over():
+        return evaluate_board(board)
+
+    legal_moves = list(board.legal_moves)
+    
+    if maximizing_player:
+        max_eval = -float('inf')
+        for move in legal_moves:
+            board.push(move)
+            evaluation = minimax(board, depth - 1, alpha, beta, False)
+            board.pop()
+            max_eval = max(max_eval, evaluation)
+            alpha = max(alpha, evaluation)
+            if beta <= alpha:
+                break  # Prune branch
+        return max_eval
+    else:
+        min_eval = float('inf')
+        for move in legal_moves:
+            board.push(move)
+            evaluation = minimax(board, depth - 1, alpha, beta, True)
+            board.pop()
+            min_eval = min(min_eval, evaluation)
+            beta = min(beta, evaluation)
+            if beta <= alpha:
+                break  # Prune branch
+        return min_eval
+
 def get_engine_move(moves_list, variant_key='standard'):
-    """
-    Tracks boards dynamically based on variant.
-    Queries Lichess Cloud Eval for standard games; uses variant-aware logic for others.
-    """
-    # Initialize the correct rule set for the current variant
+    """Calculates tactical moves using lookahead depth for all variants."""
     board_class = VARIANT_MAP.get(variant_key, chess.Board)
     board = board_class()
     
@@ -67,50 +119,42 @@ def get_engine_move(moves_list, variant_key='standard'):
     if board.is_game_over():
         return None
 
-    # Lichess Cloud Eval ONLY supports standard chess. 
-    # For variants, we must bypass the API call to avoid 404 or bad evaluations.
+    # Fallback to Cloud Eval database for standard chess speed
     if variant_key == 'standard':
-        current_fen = board.fen()
-        cloud_url = "https://lichess.org/api/cloud-eval"
-        params = {"fen": current_fen, "multiPv": 3}
-        
-        time.sleep(0.4) # Prevents HTTP 425 Rate Limits
-        
-        try:
-            response = requests.get(cloud_url, params=params)
-            if response.status_code == 200:
-                data = response.json()
-                pvs = data.get("pvs", [])
-                
-                if pvs:
-                    dice_roll = random.random()
-                    if dice_roll > 0.85 and len(pvs) >= 3:
-                        chosen_pv = pvs[2]  # ~1800 Elo choice
-                    elif dice_roll > 0.70 and len(pvs) >= 2:
-                        chosen_pv = pvs[1]  # ~2000 Elo choice
-                    else:
-                        chosen_pv = pvs[0]  # Top line choice
-                        
-                    best_move_line = chosen_pv.get("moves", "").split()
-                    if best_move_line:
-                        move_candidate = best_move_line[0]
-                        if chess.Move.from_uci(move_candidate) in board.legal_moves:
-                            return move_candidate
-        except Exception as e:
-            print(f"Cloud Engine API error: {e}")
+        # ... (Keep your existing cloud-eval API request blocks here) ...
+        pass
 
-    # --- VARIANT-SAFE FALLBACK ENGINE ---
-    # Python-chess automatically modifies .legal_moves for the active variant
+    # --- SMART ENGINE CALCULATION FOR VARIANTS ---
     legal_moves = list(board.legal_moves)
-    if legal_moves:
-        # Simple heuristic to make variant play look intentional:
-        # Prioritize captures/checks if available, otherwise pick randomly.
-        captures = [m for m in legal_moves if board.is_capture(m)]
-        if captures:
-            return random.choice(captures).uci()
-        return random.choice(legal_moves).uci()
-        
-    return None 
+    if not legal_moves:
+        return None
+
+    best_move = random.choice(legal_moves) # Default fallback
+    
+    # Depth 2 looks 2 ply ahead (your move + opponent response). 
+    # Do not set higher than 3 on free hosting or it will run out of time!
+    depth = 2 
+    
+    if board.turn == chess.WHITE:
+        best_value = -float('inf')
+        for move in legal_moves:
+            board.push(move)
+            board_value = minimax(board, depth - 1, -float('inf'), float('inf'), False)
+            board.pop()
+            if board_value > best_value:
+                best_value = board_value
+                best_move = move
+    else:
+        best_value = float('inf')
+        for move in legal_moves:
+            board.push(move)
+            board_value = minimax(board, depth - 1, -float('inf'), float('inf'), True)
+            board.pop()
+            if board_value < best_value:
+                best_value = board_value
+                best_move = move
+
+    return best_move.uci()
 
 def play_game(game_id, variant_key='standard'):
     """Streams individual match events. Passes variant key down to the engine."""

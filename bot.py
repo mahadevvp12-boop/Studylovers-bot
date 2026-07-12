@@ -219,18 +219,13 @@ def play_game(game_id, variant_key='standard'):
 def listen_to_events():
     """Listens to global challenges and game starts."""
     print(f"Starting global event listener for user: {BOT_USERNAME}")
-    url = "https://lichess.org"
+    url = "https://lichess.org/api/stream/event"
     
     response = requests.get(url, headers=HEADERS, stream=True)
-    
-    # ⚡ CRITICAL LINE TO ADD HERE:
-    # This forces the script to throw an HTTPError if Lichess rejects the connection!
-    response.raise_for_status() 
     
     for line in response.iter_lines():
         if not line:
             continue
-            
         try:
             event = json.loads(line.decode('utf-8'))
         except Exception:
@@ -252,10 +247,10 @@ def listen_to_events():
         elif event.get('type') == 'gameStart':
             game_id = event['game']['id']
             game_variant = event['game'].get('variant', {}).get('key', 'standard')
-            
             game_thread = threading.Thread(target=play_game, args=(game_id, game_variant))
             game_thread.daemon = True
             game_thread.start()
+
 
 
 import traceback
